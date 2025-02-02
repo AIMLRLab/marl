@@ -1,0 +1,34 @@
+{
+  "coding_standards": {
+    "language": "Python",
+    "framework": "PyTorch",
+    "naming_conventions": {
+      "variables": "snake_case",
+      "functions": "snake_case",
+      "classes": "PascalCase"
+    },
+    "indentation": "4 spaces",
+    "max_line_length": 88
+  },
+  "style_guidelines": {
+    "adopt_style_guide": "PEP 8",
+    "spacing": "Use spaces over tabs",
+    "imports": "Group imports: stdlib, third-party, local"
+  },
+  "best_practices": {
+    "type_hints": "Use type hints where appropriate",
+    "docstrings": "Google style docstrings"
+  },
+  "testing_requirements": {
+    "framework": "pytest",
+    "coverage": "Aim for at least 80% test coverage"
+  },
+  "documentation_guidelines": {
+    "docstrings": "Required for all functions and classes",
+    "readme": "Keep README.md up-to-date with setup instructions"
+  },
+  "error_handling": {
+    "exceptions": "Use specific exception types",
+    "logging": "Use Python's logging module"
+  }
+}

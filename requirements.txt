@@ -1,0 +1,6 @@
+torch
+numpy
+pettingzoo
+gymnasium
+pygame
+inquirer
