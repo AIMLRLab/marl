@@ -1,11 +1,67 @@
-import numpy as np
+import sys
 import logging
-from pettingzoo.mpe import simple_spread_v3, simple_adversary_v3, simple_tag_v3
-from pettingzoo.classic import connect_four_v3, tictactoe_v3, chess_v6, rps_v2, go_v5
-from pettingzoo.butterfly import knights_archers_zombies_v10, pistonball_v6
-from gymnasium.spaces import Box, Discrete
+import os
+import numpy as np
 
 logger = logging.getLogger(__name__)
+
+# Debug environment
+logger.debug("=== Environment Debug Info ===")
+logger.debug(f"Python executable: {sys.executable}")
+logger.debug(f"Python version: {sys.version}")
+logger.debug(f"PYTHONPATH: {os.getenv('PYTHONPATH')}")
+logger.debug(f"Virtual env: {os.getenv('VIRTUAL_ENV')}")
+logger.debug("=== Python Path ===")
+for path in sys.path:
+    logger.debug(f"Path: {path}")
+
+# Debug package installations
+logger.debug("=== Package Installation Check ===")
+try:
+    import pkg_resources
+    installed_packages = [d for d in pkg_resources.working_set]
+    logger.debug("Installed packages:")
+    for package in installed_packages:
+        logger.debug(f"  {package}")
+except Exception as e:
+    logger.error(f"Failed to list packages: {e}")
+
+# Debug specific imports
+logger.debug("=== Import Attempts ===")
+for package in ['pygame', 'pysc2', 'pettingzoo']:
+    try:
+        __import__(package)
+        logger.debug(f"Successfully imported {package}")
+    except ImportError as e:
+        logger.error(f"Failed to import {package}: {e}")
+        if hasattr(e, '__traceback__'):
+            logger.error(f"Traceback for {package}:", exc_info=True)
+
+logger.debug("Attempting to import pettingzoo.mpe...")
+try:
+    from pettingzoo.mpe import simple_spread_v3, simple_adversary_v3, simple_tag_v3
+    logger.debug("Successfully imported pettingzoo.mpe")
+except ImportError as e:
+    logger.error(f"Failed to import pettingzoo.mpe: {e}")
+    logger.error(f"Looking for pettingzoo in: {[p for p in sys.path if 'pettingzoo' in p]}")
+
+logger.debug("Attempting to import pettingzoo.classic...")
+try:
+    from pettingzoo.classic import connect_four_v3, tictactoe_v3, chess_v6, rps_v2, go_v5
+    logger.debug("Successfully imported pettingzoo.classic")
+except ImportError as e:
+    logger.error(f"Failed to import pettingzoo.classic: {e}")
+
+logger.debug("Attempting to import pettingzoo.butterfly...")
+try:
+    from pettingzoo.butterfly import knights_archers_zombies_v10, pistonball_v6
+    logger.debug("Successfully imported pettingzoo.butterfly")
+except ImportError as e:
+    logger.error(f"Failed to import pettingzoo.butterfly: {e}")
+
+from gymnasium.spaces import Box, Discrete
+from environments.starcraft_wrapper import StarCraft2Wrapper
+from typing import Optional, Dict
 
 class MultiAgentEnv:
     """A wrapper for PettingZoo environments that standardizes the interface."""
@@ -26,6 +82,9 @@ class MultiAgentEnv:
         # Complex Games
         'knights_archers_zombies': knights_archers_zombies_v10,
         'pistonball': pistonball_v6,
+
+        # StarCraft II
+        'starcraft': StarCraft2Wrapper,
     }
 
     ENV_AGENT_COUNTS = {
@@ -44,6 +103,9 @@ class MultiAgentEnv:
         # Complex
         'knights_archers_zombies': (2, 12),
         'pistonball': (2, 20),
+
+        # StarCraft II
+        'starcraft': (2, 8),  # Supports 2-8 agents for different scenarios
     }
 
     # Define environment-specific configurations
@@ -61,14 +123,24 @@ class MultiAgentEnv:
         }
     }
 
-    def __init__(self, env_name='simple_spread', num_agents=None, max_cycles=25, render_mode=None, debug=False):
-        """Initialize the environment.
+    def __init__(
+        self,
+        env_name: str,
+        num_agents: Optional[int] = None,
+        max_cycles: int = 25,
+        render_mode: Optional[str] = None,
+        debug: bool = False,
+        map_name: str = "Simple64"  # Add this parameter
+    ):
+        """Initialize environment wrapper.
 
         Args:
-            env_name (str): Name of the environment to create
-            num_agents (int, optional): Number of agents. Must be within env's limits
-            max_cycles (int): Maximum steps per episode
-            render_mode (str): Rendering mode ('human', 'rgb_array', or None)
+            env_name: Name of environment to load
+            num_agents: Number of agents (must be within env limits)
+            max_cycles: Maximum steps per episode
+            render_mode: Rendering mode (human or None)
+            debug: Enable debug logging
+            map_name: Map name for StarCraft II environment
         """
         if debug:
             logger.setLevel(logging.DEBUG)
@@ -77,13 +149,17 @@ class MultiAgentEnv:
 
         # Keep original render_mode request
         self.render_mode = render_mode
+        self.is_parallel = False
         logger.debug(f"Requested render mode: {render_mode}")
 
         try:
             env_class = self.SUPPORTED_ENVS[env_name]
             logger.debug(f"Initializing {env_name} environment")
 
-            if env_name in ['simple_spread', 'simple_adversary', 'simple_tag']:
+            if env_name == 'starcraft':
+                self.env = env_class(map_name=map_name, render_mode=render_mode)
+                self.is_parallel = False
+            elif env_name in ['simple_spread', 'simple_adversary', 'simple_tag']:
                 self.env = env_class.parallel_env(max_cycles=max_cycles, render_mode=render_mode)
                 self.is_parallel = True
             else:

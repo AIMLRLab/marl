@@ -1,6 +1,6 @@
 # Multi-Agent Reinforcement Learning (MARL) Framework
 
-A PyTorch-based framework for training multiple agents in various PettingZoo environments using independent Q-learning. Supports both cooperative and competitive scenarios with dynamic observation/action space handling.
+A PyTorch-based framework for training multiple agents in various environments using independent Q-learning. Supports both cooperative and competitive scenarios with dynamic observation/action space handling.
 
 ## 🎮 Supported Environments
 
@@ -10,6 +10,7 @@ A PyTorch-based framework for training multiple agents in various PettingZoo env
 | Simple Adversary | Mixed | 3-7 | Good agents cooperate against an adversary |
 | Simple Tag | Competitive | 4-8 | Pursuit-evasion scenario with predator and prey |
 | Knights Archers Zombies | Cooperative | 2-12 | Complex game with different agent types |
+| StarCraft II | Mixed | 2 | Strategic real-time combat scenarios |
 
 ## 🚀 Quick Start
 
@@ -28,6 +29,52 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 3. Install dependencies:
 ```bash
 pip install -r requirements.txt
+```
+
+## 🎮 StarCraft II Setup
+
+### Installation Steps
+
+1. **Install StarCraft II**
+   - Download [Battle.net](https://www.blizzard.com/download/)
+   - Install StarCraft II through Battle.net
+   - Complete the installation process
+
+2. **Configure Environment**
+```bash
+# macOS
+echo 'export SC2PATH="/Applications/StarCraft II"' >> ~/.zshrc
+source ~/.zshrc
+
+# Windows
+set SC2PATH=C:\Program Files (x86)\StarCraft II
+
+# Linux
+export SC2PATH=~/StarCraft II
+```
+
+3. **Install Training Maps**
+```bash
+# Create Maps directory
+mkdir -p "$SC2PATH/Maps"
+
+# Download and extract maps
+wget https://github.com/deepmind/pysc2/releases/download/v1.2/mini_games.zip
+unzip mini_games.zip -d "$SC2PATH/Maps/"
+```
+
+### Available Maps
+- **Simple64**: Basic 64x64 training map
+- **AbyssalReef**: Professional 2-player map
+- **Flat64**: Simplified 64x64 terrain map
+
+### Running StarCraft II Training
+```bash
+# Test installation
+python main.py --env starcraft --no-render --episodes 10
+
+# Full training run
+python main.py --env starcraft --episodes 2000
 ```
 
 ## 💻 Usage
@@ -79,7 +126,6 @@ The framework tracks:
 - Training Progress
 
 ## 🏗️ Project Structure
-
 ```
 marl-framework/
 ├── environments/        # Environment wrappers
@@ -89,7 +135,6 @@ marl-framework/
 ```
 
 ## 🔍 Features
-
 - Dynamic observation/action space handling
 - Environment-specific configurations
 - Real-time training visualization
@@ -98,7 +143,6 @@ marl-framework/
 - Command-line and interactive modes
 
 ## 🤝 Contributing
-
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
 3. Commit changes (`git commit -m 'Add AmazingFeature'`)
@@ -106,5 +150,5 @@ marl-framework/
 5. Open a Pull Request
 
 ## 📝 License
-
 MIT License - see LICENSE file for details
+

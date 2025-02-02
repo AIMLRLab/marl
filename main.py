@@ -103,7 +103,8 @@ def get_env_selection():
         'simple_spread',
         'simple_adversary',
         'simple_tag',
-        'knights_archers_zombies'
+        'knights_archers_zombies',
+        'starcraft'  # Add StarCraft II to the list
     ]
 
     questions = [
@@ -113,6 +114,19 @@ def get_env_selection():
         inquirer.Text('num_agents',
                      message="How many agents? (press enter for default)")
     ]
+
+    # Add map selection for StarCraft II
+    if answers['env'] == 'starcraft':
+        map_choices = [
+            'Simple64',
+            'AbyssalReef',
+            'Flat64'
+        ]
+        questions.append(
+            inquirer.List('map_name',
+                         message="Which StarCraft II map?",
+                         choices=map_choices)
+        )
 
     answers = inquirer.prompt(questions)
 
@@ -143,6 +157,7 @@ def main():
         logging.basicConfig(level=logging.INFO)
 
     # If env not specified via command line, use interactive selection
+    answers = {}
     if not args.env:
         answers = get_env_selection()
         args.env = answers['env']
@@ -151,13 +166,26 @@ def main():
 
     # Initialize environment with optional rendering
     render_mode = None if args.no_render else "human"
-    env = MultiAgentEnv(
-        env_name=args.env,
-        num_agents=args.num_agents,
-        max_cycles=25,
-        render_mode=render_mode,
-        debug=args.debug
-    )
+
+    # Special handling for StarCraft II
+    if args.env == 'starcraft':
+        map_name = answers.get('map_name', 'Simple64')  # Default to Simple64 if not specified
+        env = MultiAgentEnv(
+            env_name=args.env,
+            num_agents=2,  # StarCraft II currently supports 2 agents
+            max_cycles=1000,
+            render_mode=render_mode,
+            debug=args.debug,
+            map_name=map_name  # Pass map_name directly
+        )
+    else:
+        env = MultiAgentEnv(
+            env_name=args.env,
+            num_agents=args.num_agents,
+            max_cycles=25,
+            render_mode=render_mode,
+            debug=args.debug
+        )
 
     # Initialize agents with correct dimensions for each agent
     agents = {
