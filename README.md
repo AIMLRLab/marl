@@ -1,69 +1,110 @@
-3. Install dependencies:
+# Multi-Agent Reinforcement Learning (MARL) Framework
 
+A PyTorch-based framework for training multiple agents in various PettingZoo environments using independent Q-learning. Supports both cooperative and competitive scenarios with dynamic observation/action space handling.
+
+## 🎮 Supported Environments
+
+| Environment | Type | Agents | Description |
+|------------|------|--------|-------------|
+| Simple Spread | Cooperative | 2-10 | Agents cover target landmarks while avoiding collisions |
+| Simple Adversary | Mixed | 3-7 | Good agents cooperate against an adversary |
+| Simple Tag | Competitive | 4-8 | Pursuit-evasion scenario with predator and prey |
+| Knights Archers Zombies | Cooperative | 2-12 | Complex game with different agent types |
+
+## 🚀 Quick Start
+
+1. Clone the repository:
+```bash
+git clone <repository-url>
+cd marl-framework
+```
+
+2. Create a virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-## Usage
+## 💻 Usage
 
-Run the training script with interactive environment selection:
-
+### Interactive Mode
 ```bash
 python main.py
 ```
 
-Or specify environment and parameters directly:
-
+### Command Line Mode
 ```bash
-python main.py --env simple_spread --num-agents 3 --episodes 2000
+python main.py --env simple_spread --num-agents 3 --episodes 2000 --no-render
 ```
 
-### Command Line Arguments
+### Arguments
+| Argument | Description | Default |
+|----------|-------------|---------|
+| --env | Environment name | (interactive) |
+| --num-agents | Number of agents | (env default) |
+| --no-render | Disable visualization | False |
+| --episodes | Training episodes | 2000 |
 
-- `--env`: Environment name (optional, interactive selection if not provided)
-- `--num-agents`: Number of agents (optional, uses default if not provided)
-- `--no-render`: Disable visualization
-- `--episodes`: Number of training episodes (default: 2000)
+## 🔧 Training Configuration
 
-## Project Structure
+### Hyperparameters
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| Learning Rate | 0.001 | Agent learning speed |
+| Epsilon Start | 1.0 | Initial exploration rate |
+| Epsilon End | 0.1 | Final exploration rate |
+| Epsilon Decay | 0.995 | Exploration decay rate |
+| Gamma | 0.95 | Reward discount factor |
+| Batch Size | 32 | Training batch size |
 
-- `environments/`: Environment wrappers and configurations
-- `agents/`: Neural network architectures and agent implementations
-- `training/`: Training loops and metrics tracking
+### Neural Network Architecture
+- Input Layer: Environment-specific observation size
+- Hidden Layers: 2 x 128 units with ReLU
+- Output Layer: Environment-specific action size
+- Weight Initialization: Orthogonal
+- Optimizer: Adam
 
-## Features
-
-- Dynamic observation and action space handling
-- Environment-specific agent configurations
-- Real-time training metrics and visualization
-- Support for both cooperative and competitive scenarios
-- Configurable hyperparameters for training
-
-## Training Parameters
-
-- Learning rate: 0.001
-- Epsilon decay: 0.995 (exploration rate)
-- Gamma: 0.95 (discount factor)
-- Batch size: 32
-- Episodes: 2000 (default)
-
-## Metrics
+## 📊 Performance Metrics
 
 The framework tracks:
+- Episode Total Reward
+- Average Game Length
+- Per-agent Performance
+- Best Episode Score
+- Training Progress
 
-- Average total reward per episode
-- Average game length
-- Per-agent rewards
-- Best performance metrics
+## 🏗️ Project Structure
 
-## Contributing
+```
+marl-framework/
+├── environments/        # Environment wrappers
+├── agents/             # Neural network models
+├── training/           # Training logic
+└── main.py            # Entry point
+```
+
+## 🔍 Features
+
+- Dynamic observation/action space handling
+- Environment-specific configurations
+- Real-time training visualization
+- Flexible agent architectures
+- Comprehensive metrics tracking
+- Command-line and interactive modes
+
+## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add AmazingFeature'`)
+4. Push to branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-## License
+## 📝 License
 
-MIT License
+MIT License - see LICENSE file for details
