@@ -1,7 +1,8 @@
 import numpy as np
 import logging
 from pettingzoo.mpe import simple_spread_v3, simple_adversary_v3, simple_tag_v3
-from pettingzoo.butterfly import knights_archers_zombies_v10
+from pettingzoo.classic import connect_four_v3, tictactoe_v3, chess_v6, rps_v2, go_v5
+from pettingzoo.butterfly import knights_archers_zombies_v10, pistonball_v6
 from gymnasium.spaces import Box, Discrete
 
 logger = logging.getLogger(__name__)
@@ -10,17 +11,39 @@ class MultiAgentEnv:
     """A wrapper for PettingZoo environments that standardizes the interface."""
 
     SUPPORTED_ENVS = {
+        # MPE (Multi-Particle Environments)
         'simple_spread': simple_spread_v3,
         'simple_adversary': simple_adversary_v3,
         'simple_tag': simple_tag_v3,
-        'knights_archers_zombies': knights_archers_zombies_v10
+
+        # Classic Games
+        'connect_four': connect_four_v3,
+        'tictactoe': tictactoe_v3,
+        'chess': chess_v6,
+        'rps': rps_v2,  # Rock, Paper, Scissors
+        'go': go_v5,
+
+        # Complex Games
+        'knights_archers_zombies': knights_archers_zombies_v10,
+        'pistonball': pistonball_v6,
     }
 
     ENV_AGENT_COUNTS = {
-        'simple_spread': (2, 10),  # min, max agents
+        # MPE
+        'simple_spread': (2, 10),
         'simple_adversary': (3, 7),
-        'simple_tag': (4, 8),  # Fixed number of agents
-        'knights_archers_zombies': (2, 12)
+        'simple_tag': (4, 8),
+
+        # Classic
+        'connect_four': (2, 2),
+        'tictactoe': (2, 2),
+        'chess': (2, 2),
+        'rps': (2, 2),
+        'go': (2, 2),
+
+        # Complex
+        'knights_archers_zombies': (2, 12),
+        'pistonball': (2, 20),
     }
 
     # Define environment-specific configurations
@@ -38,7 +61,7 @@ class MultiAgentEnv:
         }
     }
 
-    def __init__(self, env_name='simple_spread', num_agents=None, max_cycles=25, render_mode=None):
+    def __init__(self, env_name='simple_spread', num_agents=None, max_cycles=25, render_mode=None, debug=False):
         """Initialize the environment.
 
         Args:
@@ -47,75 +70,256 @@ class MultiAgentEnv:
             max_cycles (int): Maximum steps per episode
             render_mode (str): Rendering mode ('human', 'rgb_array', or None)
         """
-        if env_name not in self.SUPPORTED_ENVS:
-            raise ValueError(f"Environment {env_name} not supported. Choose from: {list(self.SUPPORTED_ENVS.keys())}")
+        if debug:
+            logger.setLevel(logging.DEBUG)
+        else:
+            logger.setLevel(logging.INFO)
 
-        # Build environment kwargs
-        env_kwargs = {'max_cycles': max_cycles, 'render_mode': render_mode}
+        # Keep original render_mode request
+        self.render_mode = render_mode
+        logger.debug(f"Requested render mode: {render_mode}")
 
-        # Create environment first to inspect its properties
-        self.env = self.SUPPORTED_ENVS[env_name].parallel_env(**env_kwargs)
+        try:
+            env_class = self.SUPPORTED_ENVS[env_name]
+            logger.debug(f"Initializing {env_name} environment")
+
+            if env_name in ['simple_spread', 'simple_adversary', 'simple_tag']:
+                self.env = env_class.parallel_env(max_cycles=max_cycles, render_mode=render_mode)
+                self.is_parallel = True
+            else:
+                self.env = env_class.env(render_mode=render_mode)
+                self.is_parallel = False
+
+        except Exception as e:
+            logger.error(f"Failed to initialize environment {env_name}: {str(e)}")
+            raise
+
+        self.env_name = env_name
         self.possible_agents = self.env.possible_agents
-        self.num_agents = len(self.possible_agents)
-
-        # Get observation spaces for each agent
         self.state_dims = {}
         self.action_dims = {}
-        self.process_fns = {}  # Add processing functions dictionary
+        self.process_fns = {}
 
-        observations = self.env.reset()[0]
+        # Initialize spaces
+        self._init_spaces()
+
+        logger.info(f"Environment {env_name} initialized with {len(self.possible_agents)} agents")
         for agent in self.possible_agents:
-            obs = observations[agent]
-            act_space = self.env.action_space(agent)
-
-            # Get state dimension and processing function for this agent
-            if isinstance(obs, np.ndarray):
-                if len(obs.shape) > 1:
-                    self.state_dims[agent] = int(np.prod(obs.shape))
-                    self.process_fns[agent] = lambda x: x.reshape(-1)
-                else:
-                    self.state_dims[agent] = obs.shape[0]
-                    self.process_fns[agent] = lambda x: x
-            else:
-                processed = np.array(obs).flatten()
-                self.state_dims[agent] = len(processed)
-                self.process_fns[agent] = lambda x: np.array(x).flatten()
-
-            # Get action dimension for this agent
-            if isinstance(act_space, Discrete):
-                self.action_dims[agent] = act_space.n
-            else:
-                raise ValueError(f"Unsupported action space type for agent {agent}: {type(act_space)}")
-
             logger.info(f"Agent {agent} - Observation dim: {self.state_dims[agent]}, Action dim: {self.action_dims[agent]}")
 
+    def _process_observation(self, observation):
+        """Process different types of observations into flat numpy arrays."""
+        logger.debug(f"Processing observation type: {type(observation)}")
+        logger.debug(f"Raw observation: {observation}")
+
+        if isinstance(observation, dict):
+            logger.debug(f"Dict observation keys: {observation.keys()}")
+
+            # Handle dictionary observations (like tictactoe)
+            if 'observation' in observation:
+                obs = observation['observation']
+            elif 'board' in observation:
+                obs = observation['board']
+            else:
+                # For tictactoe, concatenate board and mask
+                board = np.array(observation.get('board', [])).flatten()
+                mask = np.array(observation.get('action_mask', [])).flatten()
+                obs = np.concatenate([board, mask])
+                logger.debug(f"Board shape: {board.shape}, Mask shape: {mask.shape}")
+        elif isinstance(observation, (int, float)):
+            obs = np.array([observation])
+        elif isinstance(observation, np.ndarray):
+            obs = observation.flatten()
+        else:
+            obs = np.array(observation).flatten()
+
+        # Ensure obs is 1D and float32
+        obs = obs.reshape(-1).astype(np.float32)
+        logger.debug(f"Final observation shape: {obs.shape}")
+        return obs
+
+    def _get_state_dim(self, observation):
+        """Get the flattened dimension of an observation."""
+        try:
+            processed = self._process_observation(observation)
+            dim = len(processed)
+            logger.debug(f"State dimension calculated: {dim}")
+            return dim
+        except Exception as e:
+            logger.error(f"Failed to process observation: {observation}")
+            logger.error(f"Observation type: {type(observation)}")
+            logger.error(f"Error: {str(e)}")
+            raise
+
+    def _get_action_dim(self, act_space):
+        """Extract action dimension from different space types."""
+        # Handle method case (classic games sometimes return methods)
+        if callable(act_space):
+            try:
+                # Try with current agent if it's a method requiring agent parameter
+                act_space = act_space(self.current_agent)
+            except TypeError:
+                # If that fails, try without parameters
+                act_space = act_space()
+
+        if isinstance(act_space, Discrete):
+            return act_space.n
+        elif isinstance(act_space, dict):  # For Dict spaces
+            if 'action_mask' in act_space:  # Games like Tictactoe
+                return len(act_space['action_mask'])
+            elif 'move' in act_space:  # Games like Chess
+                return act_space['move'].n
+        elif hasattr(act_space, 'n'):  # Fallback for other discrete-like spaces
+            return act_space.n
+
+        raise ValueError(f"Unsupported action space type: {type(act_space)}")
+
+    def _process_action_space(self, agent, act_space):
+        """Process action space for an agent."""
+        try:
+            self.current_agent = agent  # Store current agent for _get_action_dim
+            self.action_dims[agent] = self._get_action_dim(act_space)
+            logger.debug(f"Processed action space for {agent}: dim={self.action_dims[agent]}")
+        except ValueError as e:
+            logger.error(f"Failed to process action space for {agent}: {act_space}")
+            logger.error(f"Action space type: {type(act_space)}")
+            raise e
+
     def reset(self):
-        observations = self.env.reset()
-        if isinstance(observations, tuple):
-            observations = observations[0]
-        return {
-            agent: self.process_fns[agent](obs).astype(np.float32)
+        """Reset the environment and return initial observations."""
+        if self.is_parallel:
+            observations = self.env.reset()[0]
+        else:
+            self.env.reset()
+            observations = {agent: self.env.observe(agent) for agent in self.possible_agents}
+
+        processed_obs = {}
+        for agent, obs in observations.items():
+            processed = self._process_observation(obs)
+            logger.debug(f"Reset: Agent {agent} observation shape: {processed.shape}")
+            processed_obs[agent] = processed
+
+        return processed_obs
+
+    def step(self, actions):
+        """Execute actions in the environment."""
+        if self.is_parallel:
+            observations, rewards, terminations, truncations, _ = self.env.step(actions)
+            done = {
+                agent: terminations[agent] or truncations[agent]
+                for agent in self.possible_agents
+            }
+            done["__all__"] = all(done.values())
+        else:
+            observations = {}
+            rewards = {}
+            done = {}
+
+            for agent in self.possible_agents:
+                # Skip if agent is already done
+                if agent in self.env.terminations and self.env.terminations[agent]:
+                    observations[agent] = self.env.observe(agent)
+                    rewards[agent] = 0.0
+                    done[agent] = True
+                    continue
+
+                # Get action mask for current agent
+                obs = self.env.observe(agent)
+                action = actions.get(agent)  # Get action safely
+
+                if isinstance(obs, dict) and 'action_mask' in obs:
+                    if not obs['action_mask'][action]:
+                        legal_moves = np.where(obs['action_mask'])[0]
+                        if len(legal_moves) > 0:
+                            action = np.random.choice(legal_moves)
+                            actions[agent] = action
+
+                # Execute step
+                try:
+                    if action is not None:  # Only step if we have a valid action
+                        self.env.step(action)
+                except ValueError as e:
+                    if "dead" in str(e):
+                        observations[agent] = self.env.observe(agent)
+                        rewards[agent] = 0.0
+                        done[agent] = True
+                        continue
+                    raise e
+
+                # Get updated state
+                observations[agent] = self.env.observe(agent)
+                rewards[agent] = float(self.env.rewards.get(agent, 0.0))
+                done[agent] = self.env.terminations[agent] or self.env.truncations[agent]
+
+            done["__all__"] = all(done.values())
+
+        processed_obs = {
+            agent: self._process_observation(obs).astype(np.float32)
             for agent, obs in observations.items()
         }
 
-    def step(self, actions):
-        next_obs, rewards, terminations, truncations, infos = self.env.step(actions)
-        dones = {
-            agent: terminations[agent] or truncations[agent]
-            for agent in self.possible_agents
-        }
-        dones["__all__"] = all(dones.values())
-
-        processed_obs = {
-            agent: self.process_fns[agent](obs).astype(np.float32)
-            for agent, obs in next_obs.items()
-        }
-
-        return processed_obs, rewards, dones, infos
+        logger.debug(f"Step complete - Observations: {[obs.shape for obs in processed_obs.values()]}")
+        return processed_obs, rewards, done, {}
 
     def render(self):
         """Render the environment if render_mode is set."""
-        self.env.render()
+        if self.render_mode == "human":
+            try:
+                if hasattr(self.env, 'render'):
+                    self.env.render()
+                elif hasattr(self.env, 'aec_env') and hasattr(self.env.aec_env, 'render'):
+                    self.env.aec_env.render()
+            except Exception as e:
+                logger.warning(f"Failed to render: {str(e)}")
 
     def close(self):
-        self.env.close()
+        """Close the environment and any displays."""
+        try:
+            if hasattr(self.env, 'close'):
+                self.env.close()
+            if hasattr(self.env, 'render_mode') and self.env.render_mode == "human":
+                import pygame
+                pygame.display.quit()
+                pygame.quit()
+        except Exception as e:
+            logger.warning(f"Error during environment cleanup: {str(e)}")
+
+    def _init_spaces(self):
+        """Initialize observation and action spaces for all agents."""
+        logger.debug("Initializing spaces for all agents")
+
+        # Initialize spaces based on environment type
+        if self.is_parallel:
+            observations = self.env.reset()[0]
+            for agent in self.possible_agents:
+                logger.debug(f"Processing parallel agent: {agent}")
+                obs = observations[agent]
+                act_space = self.env.action_space(agent)
+
+                # Process observation space
+                self.state_dims[agent] = self._get_state_dim(obs)
+                self.process_fns[agent] = self._process_observation
+
+                # Process action space
+                self._process_action_space(agent, act_space)
+        else:
+            # For classic games
+            self.env.reset()
+            for agent in self.possible_agents:
+                logger.debug(f"Processing classic game agent: {agent}")
+                observation = self.env.observe(agent)
+
+                # Process observation space
+                self.state_dims[agent] = self._get_state_dim(observation)
+                self.process_fns[agent] = self._process_observation
+
+                # Get action space based on environment type
+                if hasattr(self.env, 'action_space'):
+                    act_space = self.env.action_space
+                elif hasattr(self.env, 'action_spaces'):
+                    act_space = self.env.action_spaces[agent]
+                else:
+                    act_space = self.env.observation_space(agent)
+
+                logger.debug(f"Action space for {agent}: {type(act_space)}")
+                self._process_action_space(agent, act_space)

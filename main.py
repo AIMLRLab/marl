@@ -21,6 +21,7 @@ def train(env, agents, metrics, episodes=2000,
           gamma=0.95,  # Lower gamma to focus more on immediate rewards
           batch_size=32):
     logger.info(f"Training {len(agents)} agents | ε={epsilon_start:.2f}->{epsilon_end} | lr={learning_rate}")
+    logger.info(f"Render mode: {env.render_mode}")
 
     optimizers = {
         agent: torch.optim.Adam(agents[agent].parameters(), lr=learning_rate)
@@ -38,6 +39,9 @@ def train(env, agents, metrics, episodes=2000,
         steps = 0
 
         while not done["__all__"]:
+            # Always try to render at the start of each step
+            env.render()
+
             actions = {}
             for agent in env.possible_agents:
                 if np.random.random() < epsilon:
@@ -129,7 +133,14 @@ def main():
     parser.add_argument('--num-agents', type=int, help='Number of agents (must be within env limits)')
     parser.add_argument('--no-render', action='store_true', help='Disable rendering')
     parser.add_argument('--episodes', type=int, default=2000, help='Number of episodes to train')
+    parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     args = parser.parse_args()
+
+    # Set up logging based on debug flag
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
 
     # If env not specified via command line, use interactive selection
     if not args.env:
@@ -144,7 +155,8 @@ def main():
         env_name=args.env,
         num_agents=args.num_agents,
         max_cycles=25,
-        render_mode=render_mode
+        render_mode=render_mode,
+        debug=args.debug
     )
 
     # Initialize agents with correct dimensions for each agent

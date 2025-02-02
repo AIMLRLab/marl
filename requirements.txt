@@ -1,6 +1,6 @@
-torch
-numpy
-pettingzoo
-gymnasium
-pygame
-inquirer
+torch>=2.0.0
+numpy>=1.24.0
+pygame==2.3.0
+pettingzoo[all]==1.24.1
+gymnasium>=0.29.1
+inquirer>=3.1.3
