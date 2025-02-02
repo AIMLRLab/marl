@@ -2,11 +2,18 @@ import numpy as np
 import logging
 from typing import Dict, Tuple
 from gymnasium import spaces
-from pysc2.env import sc2_env
-from pysc2.lib import features, actions
 import os
 from absl import flags
 from absl import app
+
+# Patch for Python 3.11 compatibility
+import random
+old_shuffle = random.shuffle
+random.shuffle = lambda x, *args: old_shuffle(x)
+
+# Now import PySC2 after the patch
+from pysc2.env import sc2_env
+from pysc2.lib import features, actions
 
 logger = logging.getLogger(__name__)
 
@@ -27,25 +34,28 @@ class StarCraft2Wrapper:
     """StarCraft II environment wrapper."""
 
     AVAILABLE_MAPS = {
-        'Simple64': "CollectMineralShards",
-        'CollectMineralShards': "CollectMineralShards",  # Simplest map - collect minerals
-        'MoveToBeacon': "MoveToBeacon",  # Easiest map - just move to a beacon
-        'DefeatRoaches': "DefeatRoaches"  # Combat map - defeat enemy units
+        'Simple64': "MoveToBeacon",
+        'MoveToBeacon': "MoveToBeacon",
+        'CollectMineralShards': "CollectMineralShards",
+        'DefeatRoaches': "DefeatRoaches"
     }
 
     def __init__(self, map_name: str = "MoveToBeacon", render_mode: str = None):
         """Initialize StarCraft II environment."""
-        # Verify SC2PATH environment variable
         sc2_path = os.getenv('SC2PATH')
         if not sc2_path:
-            raise ValueError("SC2PATH environment variable not set. Please follow README instructions.")
+            raise ValueError("SC2PATH environment variable not set.")
 
         logger.info(f"Using StarCraft II from: {sc2_path}")
-        logger.info(f"Attempting to load map: {self.AVAILABLE_MAPS[map_name]}")
+        logger.info(f"Loading map: {self.AVAILABLE_MAPS[map_name]}")
 
-        # Define action and observation spaces
-        self.action_space = spaces.Discrete(len(actions.FUNCTIONS))
-        self.observation_space = spaces.Box(low=0, high=1, shape=(7056,), dtype=np.float32)
+        # PettingZoo compatibility attributes
+        self.possible_agents = ["agent_0"]
+        self.agent_selection = self.possible_agents[0]
+        self.rewards = {agent: 0 for agent in self.possible_agents}
+        self.terminations = {agent: False for agent in self.possible_agents}
+        self.truncations = {agent: False for agent in self.possible_agents}
+        self.infos = {agent: {} for agent in self.possible_agents}
 
         try:
             self.env = sc2_env.SC2Env(
@@ -56,102 +66,85 @@ class StarCraft2Wrapper:
                     use_feature_units=True
                 ),
                 step_mul=8,
-                visualize=render_mode is not None
+                visualize=render_mode is not None,
+                game_steps_per_episode=150
             )
+            self.action_space = spaces.Discrete(7056)  # 84x84 grid
+            self.observation_space = spaces.Box(low=0, high=1, shape=(7056,), dtype=np.float32)
+            self.timestep = None
+
         except Exception as e:
             logger.error(f"Failed to initialize SC2 environment: {str(e)}")
             raise
 
-        # Rest of the initialization code remains the same
-        self.map_name = map_name
-        self.n_agents = 1
-        self.possible_agents = [f"agent_{i}" for i in range(self.n_agents)]
-
-        self.state_dims = {agent: 7056 for agent in self.possible_agents}
-        self.action_dims = {agent: len(actions.FUNCTIONS) for agent in self.possible_agents}
-
-        # Initialize state variables
-        self.terminations = {agent: False for agent in self.possible_agents}
-        self.truncations = {agent: False for agent in self.possible_agents}
-        self.rewards = {agent: 0.0 for agent in self.possible_agents}
-        self._step_count = 0
-        self.max_steps = 1000
-
-        self.render_mode = render_mode
-        logger.info(f"Initialized StarCraft II environment: {map_name}")
-
-    def reset(self) -> Dict[str, np.ndarray]:
-        """Reset the environment."""
-        self._step_count = 0
-        self.terminations = {agent: False for agent in self.possible_agents}
-        self.truncations = {agent: False for agent in self.possible_agents}
-        self.rewards = {agent: 0.0 for agent in self.possible_agents}
-
-        self.obs = self.env.reset()[0]
-        return self._process_observation(self.obs.observation)
-
     def step(self, action):
         """Execute action and return new state."""
         try:
-            # Convert action to SC2 action
-            sc2_action = self._process_action(action)
-            timestep = self.env.step([sc2_action])[0]
+            # Convert flattened action back to x,y coordinates
+            x = action // 84
+            y = action % 84
 
-            # Process observation and rewards
-            obs = self._process_observation(timestep.observation)
-            reward = float(timestep.reward)
-            done = timestep.last()
-            info = {}
+            # First, check what actions are available
+            available_actions = self.timestep.observation.available_actions
 
-            return obs, reward, done, info
+            # Select army if we haven't yet and it's available
+            if actions.FUNCTIONS.select_army.id in available_actions:
+                select_action = actions.FUNCTIONS.select_army("select")
+                self.timestep = self.env.step([select_action])[0]
+                available_actions = self.timestep.observation.available_actions
+
+            # Move if it's available, otherwise no-op
+            if actions.FUNCTIONS.Move_screen.id in available_actions:
+                move_action = actions.FUNCTIONS.Move_screen("now", [x, y])
+                self.timestep = self.env.step([move_action])[0]
+            else:
+                no_op = actions.FUNCTIONS.no_op()
+                self.timestep = self.env.step([no_op])[0]
+
+            # Process results
+            obs = self._process_observation(self.timestep)
+            reward = float(self.timestep.reward)
+            done = self.timestep.last()
+
+            # Update PettingZoo attributes
+            self.rewards[self.agent_selection] = reward
+            self.terminations[self.agent_selection] = done
+            self.truncations[self.agent_selection] = False
+
+            return obs, self.rewards, self.terminations, self.infos
 
         except Exception as e:
             logger.error(f"Error in step: {str(e)}")
             raise
 
-    def _process_action(self, action):
-        """Convert normalized action to SC2 action."""
-        # For MoveToBeacon, we just need to move to the beacon
-        try:
-            # Select all marines
-            if self._can_do(actions.FUNCTIONS.select_army.id):
-                return actions.FUNCTIONS.select_army("select")
-
-            # Move to beacon
-            if self._can_do(actions.FUNCTIONS.Move_screen.id):
-                return actions.FUNCTIONS.Move_screen("now", action)
-
-            # No-op if no other action is available
-            return actions.FUNCTIONS.no_op()
-
-        except Exception as e:
-            logger.error(f"Error processing action: {str(e)}")
-            return actions.FUNCTIONS.no_op()
-
-    def _can_do(self, action_id):
-        """Check if an action is available."""
-        return action_id in self.obs.observation.available_actions
-
-    def _process_observation(self, obs):
+    def _process_observation(self, timestep):
         """Convert SC2 observation to normalized array."""
-        # Flatten and normalize the screen features
-        screen = obs.feature_screen
-        flat_screen = screen.reshape(-1)
-        return np.clip(flat_screen / 255.0, 0, 1)
+        # Get screen features
+        screen = timestep.observation.feature_screen
+        # Take player_relative layer to see where units are
+        screen = screen.player_relative
+        return screen.reshape(-1).astype(np.float32) / 4.0  # Normalize by max value
 
-    def observe(self, agent: str) -> np.ndarray:
+    def reset(self):
+        """Reset the environment."""
+        self.timestep = self.env.reset()[0]
+        obs = self._process_observation(self.timestep)
+
+        # Reset PettingZoo attributes
+        self.rewards = {agent: 0 for agent in self.possible_agents}
+        self.terminations = {agent: False for agent in self.possible_agents}
+        self.truncations = {agent: False for agent in self.possible_agents}
+        self.infos = {agent: {} for agent in self.possible_agents}
+
+        return obs
+
+    def observe(self, agent):
         """Get observation for specific agent."""
         if agent not in self.possible_agents:
             raise ValueError(f"Invalid agent: {agent}")
+        return self._process_observation(self.timestep)
 
-        return np.random.uniform(0, 1, self.state_dims[agent]).astype(np.float32)
-
-    def render(self) -> None:
-        """Render the environment."""
-        if self.render_mode == "human":
-            logger.info("Rendering not implemented for simplified wrapper")
-
-    def close(self) -> None:
+    def close(self):
         """Close the environment."""
         if hasattr(self, 'env'):
             self.env.close()
